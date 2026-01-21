@@ -1,43 +1,66 @@
 /*
     RETO 7: FINANCIAL ANALYST PROTOCOL
-    Autor: [Tu Nombre]
-    Fecha: [Fecha]
+    Autor: Maria Fernanda Torres
+    Fecha: 2026-01-20
     
-    Objetivo: Reporte MoM (Month over Month) y YTD (Year to Date)
+    Objetivo: Reporte financiero con métricas MoM y YTD
 */
 
 -- 1. CTE DE LIMPIEZA
 WITH CleanSales AS (
     SELECT
         ID_Transaccion,
-        -- TO-DO: Normalizar nombre cliente (UPPER)
-        -- TO-DO: Calcular Total_Linea (Precio * Cantidad)
-        -- TO-DO: Extraer Año y Mes
+        UPPER(Cliente) AS Cliente_Normalizado,
+        Fecha_Venta,
+        Cantidad,
+        Precio_Unitario,
+        Descuento,
+
+        -- Total de venta por línea con descuento
+        Cantidad * Precio_Unitario * (1 - Descuento) AS Total_Venta,
+
+        -- Extracción temporal (SQL Server)
+        YEAR(Fecha_Venta) AS Anio,
+        MONTH(Fecha_Venta) AS Mes
     FROM RawSalesData
 ),
 
 -- 2. CTE DE AGREGACIÓN MENSUAL
 MonthlyMetrics AS (
     SELECT
-        -- TO-DO: Agrupar por Año y Mes
-        -- TO-DO: Sumar Total_Linea
+        Anio,
+        Mes,
+        SUM(Total_Venta) AS Total_Ventas
     FROM CleanSales
-    GROUP BY ...
+    GROUP BY Anio, Mes
 )
 
 -- 3. CONSULTA FINAL (WINDOW FUNCTIONS)
 SELECT
     Anio,
     Mes,
-    Total_Ventas,
-    
-    -- TO-DO: Usar LAG() para traer ventas mes anterior
-    -- LAG(...) OVER (...) as Ventas_Mes_Anterior,
-    
-    -- TO-DO: Calcular % Crecimiento
-    
-    -- TO-DO: Calcular YTD (Running Total) reiniciando cada año
-    -- SUM(...) OVER (PARTITION BY ... ORDER BY ...) as Acumulado_YTD
+    Total_Ventas AS Venta_Mensual,
+
+    -- Ventas del mes anterior
+    LAG(Total_Ventas) OVER (
+        ORDER BY Anio, Mes
+    ) AS Venta_Mes_Anterior,
+
+    -- Crecimiento Month over Month (%)
+    ROUND(
+        (
+            (Total_Ventas - LAG(Total_Ventas) OVER (ORDER BY Anio, Mes))
+            / NULLIF(LAG(Total_Ventas) OVER (ORDER BY Anio, Mes), 0)
+        ) * 100,
+        2
+    ) AS Crecimiento_MoM_Porc,
+
+    -- Acumulado Year To Date (se reinicia cada año)
+    SUM(Total_Ventas) OVER (
+        PARTITION BY Anio
+        ORDER BY Mes
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS Acumulado_YTD
 
 FROM MonthlyMetrics
 ORDER BY Anio, Mes;
